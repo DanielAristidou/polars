@@ -90,7 +90,24 @@ fn schema_to_field(
             Some("item"), // default name for list items
             Metadata::default(),
         )?)),
-        AvroSchema::Map(_) => todo!("Avro maps are mapped to MapArrays"),
+        AvroSchema::Map(value_schema) => {
+            // The key in an Avro map is always a string
+            let key_field = Field::new("key", ArrowDataType::Utf8, false);
+        
+            // The value can be of any type, so we recursively infer its type
+            let value_field = schema_to_field(
+                value_schema,
+                Some("value"),
+                Metadata::default(),
+            )?;
+        
+            // A MapArray in Arrow is represented as a List of Structs with fields "key" and "value"
+            let fields = vec![key_field, value_field];
+            let struct_type = ArrowDataType::Struct(fields);
+        
+            // The map itself is a list of these structs
+            ArrowDataType::Map(Box::new(Field::new("entries", struct_type, false)), false)
+        },
         AvroSchema::Union(schemas) => {
             // If there are only two variants and one of them is null, set the other type as the field data type
             let has_nullable = schemas.iter().any(|x| x == &AvroSchema::Null);
